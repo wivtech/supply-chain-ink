@@ -1,0 +1,27 @@
+stages:
+- build
+- release
+
+.template: &env-info
+  before_script:
+  - env | grep -e CARGO -e CI_COMMIT -e CI_PIPELINE
+  - bash --version
+
+build:
+  <<: *env-info
+  stage: build
+  script:
+  - rustup update nightly
+  - rustup +nightly component add rust-src
+  - cargo +nightly install cargo-contract --force
+  - rustup target add wasm32-unknown-unknown --toolchain nightly
+  - cargo +nightly contract build
+
+release:
+  <<: *env-info
+  stage: release
+  when: manual
+  only:
+  - master
+  script:
+  - echo "not implemented yet"
