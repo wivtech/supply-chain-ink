@@ -11,17 +11,17 @@ build:
   <<: *env-info
   stage: build
   script:
-  - rustup update nightly
-  - rustup +nightly component add rust-src
-  - cargo +nightly install cargo-contract --force
-  - rustup target add wasm32-unknown-unknown --toolchain nightly
-  - cargo +nightly contract build
+  - make init
+  - make build
 
 release:
   <<: *env-info
   stage: release
   when: manual
-  only:
-  - master
   script:
-  - echo "not implemented yet"
+  - make release
+  - docker login -u kirillt -p $DOCKERHUB_TOKEN
+  - docker tag supply-chain-ink wivt/supply-chain-ink:$CI_COMMIT_SHORT_SHA 
+  - docker tag supply-chain-ink wivt/supply-chain-ink:latest
+  - docker push wivt/supply-chain-ink:$CI_COMMIT_SHORT_SHA 
+  - docker push wivt/supply-chain-ink:latest
