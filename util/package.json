@@ -1,0 +1,13 @@
+{
+  "name": "contract-uploader",
+  "author": "WiV Technologies",
+  "dependencies": {
+    "@polkadot/api": "2.9.1",
+    "@polkadot/api-contract": "2.9.1",
+    "yargs": "^16.2.0"
+  },
+  "description": "Utility for CLI uploading of a contract",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "Unlicense"
+}

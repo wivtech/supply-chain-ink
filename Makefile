@@ -1,19 +1,20 @@
 IMAGE ?= supply-chain-ink
 IMAGE_DEV ?= $(IMAGE)-dev
 
-DOCKER ?= docker #you can use "podman" as well
+DOCKER ?= podman #you can use "podman" as well
 
 .PHONY: init
 init:
 	rustup self update
 	rustup update nightly
-	rustup +nightly component add rust-src
 	rustup target add wasm32-unknown-unknown --toolchain nightly
-	cargo install --git https://github.com/paritytech/cargo-contract cargo-contract --features extrinsics --force
+	rustup default nightly
+	rustup component add rust-src
+	cargo install --git https://github.com/paritytech/cargo-contract cargo-contract --force
 
 .PHONY: build
 build:
-	cargo +nightly build contract build
+	cargo contract build
 
 .PHONY: release
 release:
@@ -29,4 +30,4 @@ dev-docker-run:
 
 .PHONY: dev-docker-inspect
 dev-docker-inspect:
-	@$(DOCKER) run --net=host -it --rm --entrypoint /bin/bash $(IMAGE_DEV)
+	@$(DOCKER) run --net=host -it --rm --entrypoint /bin/ash $(IMAGE_DEV)
