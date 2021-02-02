@@ -1,29 +1,10 @@
-// Copyright 2018-2021 Parity Technologies (UK) Ltd.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-//! # ERC721
+//! # Asset ERC721
 //!
-//! This is an ERC721 Token implementation.
-//!
-//! ## Warning
-//!
-//! This contract is an *example*. It is neither audited nor endorsed for production use.
-//! Do **not** rely on it to keep anything of value secure.
+//! This is an ERC721 Asset Implementation
 //!
 //! ## Overview
 //!
-//! This contract demonstrates how to build non-fungible or unique tokens using ink!.
+//! This contract manage a supply chain of assets
 //!
 //! ## Error Handling
 //!
@@ -32,42 +13,13 @@
 //! The errors are defined as an Enum type. Any other error or invariant violation
 //! triggers a panic and therefore rolls back the transaction.
 //!
-//! ## Token Management
-//!
-//! After creating a new token, the function caller becomes the owner.
-//! A token can be created, transferred, or destroyed.
-//!
-//! Token owners can assign other accounts for transferring specific tokens on their behalf.
-//! It is also possible to authorize an operator (higher rights) for another account to handle tokens.
-//!
-//! ### Token Creation
-//!
-//! Token creation start by calling the `mint(&mut self, id: u32)` function.
-//! The token owner becomes the function caller. The Token ID needs to be specified
-//! as the argument on this function call.
-//!
-//! ### Token Transfer
-//!
-//! Transfers may be initiated by:
-//! - The owner of a token
-//! - The approved address of a token
-//! - An authorized operator of the current owner of a token
-//!
-//! The token owner can transfer a token by calling the `transfer` or `transfer_from` functions.
-//! An approved address can make a token transfer by calling the `transfer_from` funtion.
-//! Operators can transfer tokens on another account's behalf or can approve a token transfer
-//! for a different account.
-//!
-//! ### Token Removal
-//!
-//! Tokens can be destroyed by burning them. Only the token owner is allowed to burn a token.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-
 use ink_lang as ink;
 
+
 #[ink::contract]
-mod erc721 {
+mod asset_erc721 {
     #[cfg(not(feature = "ink-as-dependency"))]
     use ink_storage::collections::{
         hashmap::Entry,
@@ -78,36 +30,55 @@ mod erc721 {
         Encode,
     };
 
-    /// A token ID.
-    pub type TokenId = u32;
+    /// Asset ID
+    pub type AssetId = u32;
 
     #[ink(storage)]
     #[derive(Default)]
-    pub struct Erc721 {
-        /// Mapping from token to owner.
-        token_owner: StorageHashMap<TokenId, AccountId>,
-        /// Mapping from token to approvals users.
-        token_approvals: StorageHashMap<TokenId, AccountId>,
-        /// Mapping from owner to number of owned token.
-        owned_tokens_count: StorageHashMap<AccountId, u32>,
-        /// Mapping from owner to operator approvals.
-        operator_approvals: StorageHashMap<(AccountId, AccountId), bool>,
+    pub struct AssetErc721 {
+        /// Mapping from asset to owner.
+        asset_owner: StorageHashMap<AssetId, AccountId>,
+        /// Main description of the asset
+        asset_description: StorageHashMap<AssetId,Hash>,
+        /// Main photo of the asset - Ipfs Address
+        asset_photo: StorageHashMap<AssetId, Hash>,
+        /// Category of the asset
+        asset_category: StorageHashMap<AssetId, u32>,
+        /// Stores the id and description to the allowed categories of assets
+        asset_category_description: StorageHashMap<AssetId,Hash>,
+        /// Location of the asset
+        asset_location: StorageHashMap<AssetId,Hash>,
+        // Additional Metadata of the Asset
+        asset_metadata: StorageHashMap<AssetId, Hash>,
+        // Stores the  assets validation from an administrator role
+        asset_validation: StorageHashMap<AssetId, AccountId>,
+        /// Stores the proxy accounts for the assets, a proxy can manage the asset on behalf of the owner
+        asset_proxy: StorageHashMap<AssetId, AccountId>,
+        /// Counter of the assets owned from the accounts
+        account_owned_assets: StorageHashMap<AccountId, u32>,
+        /// Store the proxy accounts that can manage all the assets of the owner
+        account_proxy: StorageHashMap<(AccountId, AccountId), bool>,
+        /// Mapping the role of an account (0 = Producer, 1= Wholesaler, 2 = Retailer, 3 = Final Buyer, 4=Shipper, 5=Administrator)
+        account_role: StorageHashMap<AccountId, u32>,
     }
 
     #[derive(Encode, Decode, Debug, PartialEq, Eq, Copy, Clone)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
         NotOwner,
+        NotAdministrator,
         NotApproved,
-        TokenExists,
-        TokenNotFound,
+        AssetExists,
+        AssetNotFound,
         CannotInsert,
         CannotRemove,
         CannotFetchValue,
         NotAllowed,
+        DuplicatedData,
+        CategoryNotFound
     }
 
-    /// Event emitted when a token transfer occurs.
+    /// Event emitted when a asset transfer occurs.
     #[ink(event)]
     pub struct Transfer {
         #[ink(topic)]
@@ -115,18 +86,34 @@ mod erc721 {
         #[ink(topic)]
         to: Option<AccountId>,
         #[ink(topic)]
-        id: TokenId,
+        id: AssetId,
     }
 
-    /// Event emitted when a token approve occurs.
+    /// Event emitted when a asset approve occurs.
     #[ink(event)]
-    pub struct Approval {
+    pub struct ProxyUpdated {
         #[ink(topic)]
         from: AccountId,
         #[ink(topic)]
         to: AccountId,
         #[ink(topic)]
-        id: TokenId,
+        id: AssetId,
+    }
+    /// Event emitted when an asset is updated
+    #[ink(event)]
+    pub struct AssetUpdate {
+        #[ink(topic)]
+        from: AccountId,
+        #[ink(topic)]
+        id: AssetId,
+    }
+    /// Event emitted when a role is updated
+    #[ink(event)]
+    pub struct RoleUpdate {
+        #[ink(topic)]
+        from: AccountId,
+        #[ink(topic)]
+        id: AccountId,
     }
 
     /// Event emitted when an operator is enabled or disabled for an owner.
@@ -140,91 +127,30 @@ mod erc721 {
         approved: bool,
     }
 
-    impl Erc721 {
-        /// Creates a new ERC721 token contract.
+    impl AssetErc721 {
+        /// Creates a new ERC721 asset contract.
         #[ink(constructor)]
         pub fn new() -> Self {
             Self {
-                token_owner: Default::default(),
-                token_approvals: Default::default(),
-                owned_tokens_count: Default::default(),
-                operator_approvals: Default::default(),
+                asset_owner: Default::default(),
+                asset_description: Default::default(),
+                asset_photo: Default::default(),
+                asset_location: Default::default(),
+                asset_category: Default::default(),
+                asset_category_description: Default::default(),
+                asset_metadata: Default::default(),
+                asset_proxy: Default::default(),
+                asset_validation: Default::default(),
+                account_owned_assets: Default::default(),
+                account_proxy: Default::default(),
+                account_role: Default::default(),
             }
         }
-
-        /// Returns the balance of the owner.
-        ///
-        /// This represents the amount of unique tokens the owner has.
+        /// Creates a new asset.
         #[ink(message)]
-        pub fn balance_of(&self, owner: AccountId) -> u32 {
-            self.balance_of_or_zero(&owner)
-        }
-
-        /// Returns the owner of the token.
-        #[ink(message)]
-        pub fn owner_of(&self, id: TokenId) -> Option<AccountId> {
-            self.token_owner.get(&id).cloned()
-        }
-
-        /// Returns the approved account ID for this token if any.
-        #[ink(message)]
-        pub fn get_approved(&self, id: TokenId) -> Option<AccountId> {
-            self.token_approvals.get(&id).cloned()
-        }
-
-        /// Returns `true` if the operator is approved by the owner.
-        #[ink(message)]
-        pub fn is_approved_for_all(&self, owner: AccountId, operator: AccountId) -> bool {
-            self.approved_for_all(owner, operator)
-        }
-
-        /// Approves or disapproves the operator for all tokens of the caller.
-        #[ink(message)]
-        pub fn set_approval_for_all(
-            &mut self,
-            to: AccountId,
-            approved: bool,
-        ) -> Result<(), Error> {
-            self.approve_for_all(to, approved)?;
-            Ok(())
-        }
-
-        /// Approves the account to transfer the specified token on behalf of the caller.
-        #[ink(message)]
-        pub fn approve(&mut self, to: AccountId, id: TokenId) -> Result<(), Error> {
-            self.approve_for(&to, id)?;
-            Ok(())
-        }
-
-        /// Transfers the token from the caller to the given destination.
-        #[ink(message)]
-        pub fn transfer(
-            &mut self,
-            destination: AccountId,
-            id: TokenId,
-        ) -> Result<(), Error> {
+        pub fn asset_new(&mut self, id: AssetId) -> Result<(), Error> {
             let caller = self.env().caller();
-            self.transfer_token_from(&caller, &destination, id)?;
-            Ok(())
-        }
-
-        /// Transfer approved or owned token.
-        #[ink(message)]
-        pub fn transfer_from(
-            &mut self,
-            from: AccountId,
-            to: AccountId,
-            id: TokenId,
-        ) -> Result<(), Error> {
-            self.transfer_token_from(&from, &to, id)?;
-            Ok(())
-        }
-
-        /// Creates a new token.
-        #[ink(message)]
-        pub fn mint(&mut self, id: TokenId) -> Result<(), Error> {
-            let caller = self.env().caller();
-            self.add_token_to(&caller, id)?;
+            self.add_asset_to(&caller, id)?;
             self.env().emit_event(Transfer {
                 from: Some(AccountId::from([0x0; 32])),
                 to: Some(caller),
@@ -232,24 +158,467 @@ mod erc721 {
             });
             Ok(())
         }
-
-        /// Deletes an existing token. Only the owner can burn the token.
+        /// Verifies if an asset id is present in the storage, it returns true/false
         #[ink(message)]
-        pub fn burn(&mut self, id: TokenId) -> Result<(), Error> {
+        pub fn asset_verify(&self, id: AssetId) -> bool{
+            self.asset_owner.contains_key(&id)
+        }
+        /// Returns the owner of an asset id
+        #[ink(message)]
+        pub fn asset_get_owner(&self, id: AssetId) -> Option<AccountId> {
+            self.asset_owner.get(&id).cloned()
+        }
+        #[ink(message)]
+        /// Adds the description of an asset, only the owner can do it
+        pub fn asset_description_new(&mut self,  id: AssetId, desc: Hash) -> Result<(), Error> {
             let caller = self.env().caller();
             let Self {
-                token_owner,
-                owned_tokens_count,
+                asset_owner,
+                asset_description,
                 ..
             } = self;
-            let occupied = match token_owner.entry(id) {
-                Entry::Vacant(_) => return Err(Error::TokenNotFound),
+            //check if asset id is present in the storage and belongs to the signer
+            let _occupied = match asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
                 Entry::Occupied(occupied) => occupied,
             };
+            // search for description storage
+            let _assetdescription = match asset_description.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_assetdescription) => return Err(Error::DuplicatedData),
+            };
+            // add description if not already present
+            if self.asset_description.insert(id, desc).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Returns the description of an asset id
+        #[ink(message)]
+        pub fn asset_description_get(&self, id: AssetId) ->Option<Hash> {
+            self.asset_description.get(&id).cloned() 
+        } 
+        /// Verifies if an asset description is present in the storage
+        #[ink(message)]
+        pub fn asset_description_verify(&self, id: AssetId) -> bool{
+            self.asset_description.contains_key(&id)
+        }
+        /// Removes the description of an asset, only the owner can do it
+        #[ink(message)]
+        pub fn asset_description_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5 {
+                return Err(Error::NotOwner)
+            };
+            // search for description 
+            let assetdescription = match self.asset_description.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetdescription) => assetdescription,
+            };
+            // remove description
+            assetdescription.remove_entry();
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Adds the IPFS address of an asset's photo, only the owner can do it
+        #[ink(message)]
+        pub fn asset_photo_new(&mut self,  id: AssetId, photoipfs: Hash) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let Self {
+                asset_owner,
+                asset_photo,
+                ..
+            } = self;
+            //check if asset id is present in the storage and belongs to the signer
+            let _occupied = match asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(occupied) => occupied,
+            };
+            // search for photo storage
+            let _assetphoto = match asset_photo.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_assetphoto) => return Err(Error::DuplicatedData),
+            };
+            // add photo ipfs address if not already present
+            if self.asset_photo.insert(id, photoipfs).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Returns the ipfs address of the asset's photo 
+        #[ink(message)]
+        pub fn asset_photo_get(&self, id: AssetId) ->  Option<Hash>{
+           self.asset_photo.get(&id).cloned()
+        }
+        /// Verifies the IPFS address of the asset photo is stored
+        #[ink(message)]
+        pub fn asset_photo_verify(&self, id: AssetId) -> bool{
+            self.asset_photo.contains_key(&id)
+        }
+        /// Removes  the ipfs address of an asset's photo, only the owner can do it
+        #[ink(message)]
+        pub fn asset_photo_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotOwner)
+            };
+            // search for photo ipfs address
+            let assetphoto = match self.asset_photo.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetphoto) => assetphoto,
+            };
+            // remove photo ipfs address
+            assetphoto.remove_entry();
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Stores the  category of an asset, only owner can do it, the category id must be already stored using "categoryDescriptionNew"
+        #[ink(message)]
+        pub fn asset_category_new(&mut self,  id: AssetId, categoryid: u32) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotOwner)
+            };
+            // search for asset_category_description in the storage
+            let _categorydescription = match self.asset_category_description.entry(categoryid) {
+                Entry::Vacant(_) => return Err(Error::CategoryNotFound),
+                Entry::Occupied(categorydescription) => categorydescription,
+            };
+            // search for asset category in the storage to avoid duplicated entries
+            let _assetcategory = match self.asset_category.entry(id) {
+                Entry::Vacant(_) => 0,
+                Entry::Occupied(_assetcategory) => return Err(Error::DuplicatedData),
+            };
+            //store the asset category
+            if self.asset_category.insert(id, categoryid).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Verifies if an asset category is present in the storage, it returns true/false
+        #[ink(message)]
+        pub fn asset_category_verify(&self, id: AssetId) -> bool{
+             self.asset_category.contains_key(&id)
+         }
+        /// Removes the category of an asset, only the owner can do it
+        #[ink(message)]
+        pub fn asset_category_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotOwner)
+            };
+            // search for category
+            let assetcategory = match self.asset_category.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetcategory) => assetcategory,
+            };
+            // remove category
+            assetcategory.remove_entry();
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Adds the  location of an asset by coordinates in decimal format, comma separated: xxx.xxxxxxx,yyyy.yyyyyy only owner can do it
+        #[ink(message)]
+        pub fn asset_location_new(&mut self,  id: AssetId, location: Hash) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer or is a shipper
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=4{
+                return Err(Error::NotOwner)
+            };
+            // search for location storage
+            let _assetlocation = match self.asset_location.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_assetlocation) => return Err(Error::DuplicatedData),
+            };
+            // add location if not already present
+            if self.asset_location.insert(id, location).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Returns the location coordinates of an asset
+        #[ink(message)]
+        pub fn asset_location_get(&self, id: AssetId) ->  Option<Hash>{
+           self.asset_location.get(&id).cloned()
+        }
+        /// Verify if there is a location stored for an asset id
+        #[ink(message)]
+        pub fn asset_location_verify(&self, id: AssetId) -> bool{
+            self.asset_location.contains_key(&id)
+        }
+        /// Remove the location of an asset id, only the owner can do it
+        #[ink(message)]
+        pub fn asset_location_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=4 {
+                return Err(Error::NotOwner)
+            };
+            // search for location
+            let assetlocation = match self.asset_location.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetlocation) => assetlocation,
+            };
+            // remove description
+            assetlocation.remove_entry();
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Add other metadata to an asset as ipfs address, only the owner can do it
+        #[ink(message)]
+        pub fn asset_metadata_new(&mut self,  id: AssetId, metadata: Hash) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotOwner)
+            };
+            // search for metadata storage
+            let _assetmetadata = match self.asset_metadata.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_assetmetadata) => return Err(Error::DuplicatedData),
+            };
+            // add metadata if not already present
+            if self.asset_metadata.insert(id, metadata).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Returns the metada ipfs address of an asset
+        #[ink(message)]
+        pub fn asset_metadata_get(&self, id: AssetId) ->  Option<Hash>{
+           self.asset_metadata.get(&id).cloned()
+        }
+        /// Verifies if there is metadata stored for an asset id
+        #[ink(message)]
+        pub fn asset_metadata_verify(&self, id: AssetId) -> bool{
+            self.asset_metadata.contains_key(&id)
+        }
+        /// Removes metadata of an asset id, only the owner can do it
+        #[ink(message)]
+        pub fn asset_metadata_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            //check if asset id is present in the storage and belongs to the signer
+            let asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            if asset.get() != &caller  && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotOwner)
+            };
+            // search for metadata
+            let assetmetadata = match self.asset_metadata.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetmetadata) => assetmetadata
+            };
+            // remove description
+            assetmetadata.remove_entry();
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Validate an asset from an administrator account
+        #[ink(message)]
+        pub fn asset_validation_new(&mut self,  id: AssetId, accountid: AccountId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            // check for administrator 
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            //check if asset id is present in the storage
+            let _asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            // search for validation storage to avoid duplicated entries
+            let _assetvalidation= match self.asset_validation.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_assetvalidation) => return Err(Error::DuplicatedData),
+            };
+            // add validation if not already present
+            if self.asset_validation.insert(id, accountid).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            // emit event to report the update
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Returns the validation account of an asset
+        #[ink(message)]
+        pub fn asset_validation_get(&self, id: AssetId) ->  Option<AccountId>{
+           self.asset_validation.get(&id).cloned()
+        }
+        /// Verify if there is a validation stored for an asset id
+        #[ink(message)]
+        pub fn asset_validation_verify(&self, id: AssetId) -> bool{
+            self.asset_validation.contains_key(&id)
+        }
+        /// Remove the validation of an asset id, only an administrator can do it
+        #[ink(message)]
+        pub fn asset_validation_delete(&mut self,  id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            // check for administrator 
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            //check if asset id is present in the storage
+            let _asset = match self.asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(asset) => asset,
+            };
+            // search for validation
+            let assetvalidation = match self.asset_validation.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(assetvalidation) => assetvalidation,
+            };
+            // remove validation
+            assetvalidation.remove_entry();
+            // emits event for asset updated
+            self.env().emit_event(AssetUpdate {
+                from: caller,
+                id,
+            });
+            Ok(())
+        }
+        /// Add a category description, you can store categories for an asset that are not yet stored here.
+        #[ink(message)]
+        pub fn category_description_new(&mut self,  id: u32, description: Hash) -> Result<(), Error> {
+            let caller = self.env().caller();
+            // check for administrator 
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            // search for category description storage
+            let _category_description = match self.asset_category_description.entry(id) {
+                Entry::Vacant(_) => "",
+                Entry::Occupied(_category_description) => return Err(Error::DuplicatedData),
+            };
+            // add category description if not already present
+            if self.asset_category_description.insert(id, description).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            Ok(())
+        }
+        /// Returns the description of an asset category 
+        #[ink(message)]
+        pub fn category_description_get(&self, id: AssetId) ->  Option<Hash>{
+           self.asset_category_description.get(&id).cloned()
+        }
+        /// Verifies if there is a category description stored, returns true/false
+        #[ink(message)]
+        pub fn category_description_verify(&self, id: u32) -> bool{
+            self.asset_category_description.contains_key(&id)
+        }
+        /// Removes the metadata of an asset id, only the owner can do it
+        #[ink(message)]
+        pub fn category_description_delete(&mut self,  id: u32) -> Result<(), Error> {
+            let caller = self.env().caller();
+            // check for administrator 
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            //check if the category is present
+            let category = match self.asset_category_description.entry(id) {
+                Entry::Vacant(_) => return Err(Error::CategoryNotFound),
+                Entry::Occupied(category) => category,
+            };
+            // remove category
+            category.remove_entry();
+            Ok(())
+        }
+        /// Deletes an existing asset. Only the owner can do it
+        #[ink(message)]
+        pub fn asset_delete(&mut self, id: AssetId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let Self {
+                asset_owner,
+                account_owned_assets,
+                ..
+            } = self;
+            // check if asset id is store
+            let occupied = match asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
+                Entry::Occupied(occupied) => occupied,
+            };
+            // check if the assets belongs to signer
             if occupied.get() != &caller {
                 return Err(Error::NotOwner)
             };
-            decrease_counter_of(owned_tokens_count, &caller)?;
+            //decreate counter assets owned
+            decrease_counter_of(account_owned_assets, &caller)?;
+            // remove asset
             occupied.remove_entry();
             self.env().emit_event(Transfer {
                 from: Some(caller),
@@ -257,25 +626,137 @@ mod erc721 {
                 id,
             });
             Ok(())
+        } 
+        /// Writes new role operator, only administrator can do it
+        #[ink(message)]
+        pub fn account_role_new(&mut self,  accountid: AccountId, role: u32) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            // check for administrator 
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            // check fo valid role (0-9)
+            if role>5{
+                return Err(Error::CannotInsert)
+            }
+            // search for role in storage
+            let _operatorrole = match self.account_role.entry(accountid) {
+                Entry::Vacant(_) => 0,
+                Entry::Occupied(_operatorrole) => return Err(Error::DuplicatedData),
+            };
+            //store the role
+            if self.account_role.insert(accountid, role).is_some() {
+                return Err(Error::CannotInsert)
+            };
+            // emits event
+            self.env().emit_event(RoleUpdate {
+                from: caller,
+                id: accountid,
+            });
+            Ok(())
+        }
+        /// Returns the account role (0 = Producer, 1= Wholesaler, 2 = Retailer, 3 = Final Buyer, 4=Shipper, 5=Administrator)
+        #[ink(message)]
+        pub fn account_role_get(&self, accountid: AccountId) ->  Option<u32>{
+           self.account_role.get(&accountid).cloned()
+        }
+         /// Verifies if there is a role stored for the operator
+         #[ink(message)]
+         pub fn account_role_verify(&self, accountid: AccountId) -> bool{
+             self.account_role.contains_key(&accountid)
+         }
+        /// Removes an operator role, only the Administrator can do it
+        #[ink(message)]
+        pub fn account_role_delete(&mut self,  accountid: AccountId) -> Result<(), Error> {
+            let caller = self.env().caller();
+            let administrator=AssetErc721::administrator_accountid().unwrap();
+            // check for administrator 
+            if administrator != caller && self.account_role_get(caller).unwrap()!=5{
+                return Err(Error::NotAdministrator)
+            }
+            // search for role in storage
+            let operatorrole = match self.account_role.entry(accountid) {
+                Entry::Vacant(_) => return Err(Error::CannotRemove),
+                Entry::Occupied(operatorrole) => operatorrole,
+            };
+            // remove role
+            operatorrole.remove_entry();
+            self.env().emit_event(RoleUpdate {
+                from: caller,
+                id: accountid,
+            });
+            Ok(())
+        }
+        /// Returns the number of the assets owneed from an account
+        /// This represents the amount of unique assets the owner has.
+        #[ink(message)]
+        pub fn account_assets_number(&self, owner: AccountId) -> u32 {
+            self.account_assets_number_or_zero(&owner)
         }
 
-        /// Transfers token `id` `from` the sender to the `to` AccountId.
-        fn transfer_token_from(
+        /// Returns the deletegated account ID for this asset if any.
+        #[ink(message)]
+        pub fn asset_get_delegated_account(&self, id: AssetId) -> Option<AccountId> {
+            self.asset_proxy.get(&id).cloned()    
+        }
+        /// Delegate or undelegate an account to manage all the asset on behalf of the caller
+        #[ink(message)]
+        pub fn account_delegate_for_all_asset(&mut self,to: AccountId,approved: bool,) -> Result<(), Error> {
+            self.proxy_for_all_assets(to, approved)?;
+            Ok(())
+        }
+        /// Returns `true` if the operator is approved by the owner to manage any asset.
+        #[ink(message)]
+        pub fn account_verify_delegated_for_all_asset(&self, owner: AccountId, operator: AccountId) -> bool {
+            self.check_proxy_for_all(owner, operator)
+        }
+        /// Delegate an account to transfer the specified asset on behalf of the caller.
+        #[ink(message)]
+        pub fn account_delegate_single_asset(&mut self, to: AccountId, id: AssetId) -> Result<(), Error> {
+            self.delegate_for_single_asset(&to, id)?;
+            Ok(())
+        }
+        /// Transfers the asset from the caller to a different account.
+        #[ink(message)]
+        pub fn asset_transfer(
+            &mut self,
+            destination: AccountId,
+            id: AssetId,
+        ) -> Result<(), Error> {
+            let caller = self.env().caller();
+            self.asset_transfer_from(&caller, &destination, id)?;
+            Ok(())
+        }
+
+        /// Transfer approved of owned asset.
+        #[ink(message)]
+        pub fn transfer_from(
+            &mut self,
+            from: AccountId,
+            to: AccountId,
+            id: AssetId,
+        ) -> Result<(), Error> {
+            self.asset_transfer_from(&from, &to, id)?;
+            Ok(())
+        }
+        /// Transfers asset `id` `from` the sender to the `to` AccountId.
+        fn asset_transfer_from(
             &mut self,
             from: &AccountId,
             to: &AccountId,
-            id: TokenId,
+            id: AssetId,
         ) -> Result<(), Error> {
             let caller = self.env().caller();
             if !self.exists(id) {
-                return Err(Error::TokenNotFound)
+                return Err(Error::AssetNotFound)
             };
-            if !self.approved_or_owner(Some(caller), id) {
+            if !self.approved_or_owner(Some(caller), id)  && self.account_role_get(caller).unwrap()!=5 {
                 return Err(Error::NotApproved)
             };
-            self.clear_approval(id)?;
-            self.remove_token_from(from, id)?;
-            self.add_token_to(to, id)?;
+            self.clear_proxy_asset(id)?;
+            self.asset_remove_from(from, id)?;
+            self.add_asset_to(to, id)?;
             self.env().emit_event(Transfer {
                 from: Some(*from),
                 to: Some(*to),
@@ -283,49 +764,54 @@ mod erc721 {
             });
             Ok(())
         }
-
-        /// Removes token `id` from the owner.
-        fn remove_token_from(
+       /// Get hard coded super administrator AccountId ###### CUSTOMIZE ADMINISTRATOR #######
+        fn  administrator_accountid() -> Option<AccountId> {   
+            //Administrator hexadecimal Account 
+            //Alice account decoding 5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY in hex: 0xd43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d
+            let accountid32: [u8;32] = hex_literal::hex!["d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"].into();
+            Some(ink_env::AccountId::from(accountid32))
+        }
+        /// Removes asset `id` from the owner.
+        fn asset_remove_from(
             &mut self,
             from: &AccountId,
-            id: TokenId,
+            id: AssetId,
         ) -> Result<(), Error> {
             let Self {
-                token_owner,
-                owned_tokens_count,
+                asset_owner,
+                account_owned_assets,
                 ..
             } = self;
-            let occupied = match token_owner.entry(id) {
-                Entry::Vacant(_) => return Err(Error::TokenNotFound),
+            let occupied = match asset_owner.entry(id) {
+                Entry::Vacant(_) => return Err(Error::AssetNotFound),
                 Entry::Occupied(occupied) => occupied,
             };
-            decrease_counter_of(owned_tokens_count, from)?;
+            decrease_counter_of(account_owned_assets, from)?;
             occupied.remove_entry();
             Ok(())
         }
 
-        /// Adds the token `id` to the `to` AccountID.
-        fn add_token_to(&mut self, to: &AccountId, id: TokenId) -> Result<(), Error> {
+        /// Adds the asset `id` to the `to` AccountID.
+        fn add_asset_to(&mut self, to: &AccountId, id: AssetId) -> Result<(), Error> {
             let Self {
-                token_owner,
-                owned_tokens_count,
+                asset_owner,
+                account_owned_assets,
                 ..
             } = self;
-            let vacant_token_owner = match token_owner.entry(id) {
+            let vacant_asset_owner = match asset_owner.entry(id) {
                 Entry::Vacant(vacant) => vacant,
-                Entry::Occupied(_) => return Err(Error::TokenExists),
+                Entry::Occupied(_) => return Err(Error::AssetExists),
             };
             if *to == AccountId::from([0x0; 32]) {
                 return Err(Error::NotAllowed)
             };
-            let entry = owned_tokens_count.entry(*to);
+            let entry = account_owned_assets.entry(*to);
             increase_counter_of(entry);
-            vacant_token_owner.insert(*to);
+            vacant_asset_owner.insert(*to);
             Ok(())
         }
-
-        /// Approves or disapproves the operator to transfer all tokens of the caller.
-        fn approve_for_all(
+        /// Approves or disapproves the operator to transfer all assets of the caller.
+        fn proxy_for_all_assets(
             &mut self,
             to: AccountId,
             approved: bool,
@@ -339,27 +825,27 @@ mod erc721 {
                 operator: to,
                 approved,
             });
-            if self.approved_for_all(caller, to) {
+            if self.check_proxy_for_all(caller, to) {
                 let status = self
-                    .operator_approvals
+                    .account_proxy
                     .get_mut(&(caller, to))
                     .ok_or(Error::CannotFetchValue)?;
                 *status = approved;
                 Ok(())
             } else {
-                match self.operator_approvals.insert((caller, to), approved) {
+                match self.account_proxy.insert((caller, to), approved) {
                     Some(_) => Err(Error::CannotInsert),
                     None => Ok(()),
                 }
             }
         }
 
-        /// Approve the passed AccountId to transfer the specified token on behalf of the message's sender.
-        fn approve_for(&mut self, to: &AccountId, id: TokenId) -> Result<(), Error> {
+        /// Approves the passed AccountId to transfer the specified asset on behalf of the message's sender.
+        fn delegate_for_single_asset(&mut self, to: &AccountId, id: AssetId) -> Result<(), Error> {
             let caller = self.env().caller();
-            let owner = self.owner_of(id);
+            let owner = self.asset_get_owner(id);
             if !(owner == Some(caller)
-                || self.approved_for_all(owner.expect("Error with AccountId"), caller))
+                || self.check_proxy_for_all(owner.expect("Error with AccountId"), caller))
             {
                 return Err(Error::NotAllowed)
             };
@@ -367,10 +853,10 @@ mod erc721 {
                 return Err(Error::NotAllowed)
             };
 
-            if self.token_approvals.insert(id, *to).is_some() {
+            if self.asset_proxy.insert(id, *to).is_some() {
                 return Err(Error::CannotInsert)
             };
-            self.env().emit_event(Approval {
+            self.env().emit_event(ProxyUpdated {
                 from: caller,
                 to: *to,
                 id,
@@ -378,46 +864,46 @@ mod erc721 {
             Ok(())
         }
 
-        /// Removes existing approval from token `id`.
-        fn clear_approval(&mut self, id: TokenId) -> Result<(), Error> {
-            if !self.token_approvals.contains_key(&id) {
+        /// Removes existing approval from asset `id`.
+        fn clear_proxy_asset(&mut self, id: AssetId) -> Result<(), Error> {
+            if !self.asset_proxy.contains_key(&id) {
                 return Ok(())
             };
-            match self.token_approvals.take(&id) {
+            match self.asset_proxy.take(&id) {
                 Some(_res) => Ok(()),
                 None => Err(Error::CannotRemove),
             }
         }
 
-        // Returns the total number of tokens from an account.
-        fn balance_of_or_zero(&self, of: &AccountId) -> u32 {
-            *self.owned_tokens_count.get(of).unwrap_or(&0)
+        // Returns the total number of assets from an account.
+        fn account_assets_number_or_zero(&self, of: &AccountId) -> u32 {
+            *self.account_owned_assets.get(of).unwrap_or(&0)
         }
 
         /// Gets an operator on other Account's behalf.
-        fn approved_for_all(&self, owner: AccountId, operator: AccountId) -> bool {
+        fn check_proxy_for_all(&self, owner: AccountId, operator: AccountId) -> bool {
             *self
-                .operator_approvals
+                .account_proxy
                 .get(&(owner, operator))
                 .unwrap_or(&false)
         }
 
-        /// Returns true if the AccountId `from` is the owner of token `id`
-        /// or it has been approved on behalf of the token `id` owner.
-        fn approved_or_owner(&self, from: Option<AccountId>, id: TokenId) -> bool {
-            let owner = self.owner_of(id);
+        /// Returns true if the AccountId `from` is the owner of asset `id`
+        /// or it has been approved on behalf of the asset `id` owner.
+        fn approved_or_owner(&self, from: Option<AccountId>, id: AssetId) -> bool {
+            let owner = self.asset_get_owner(id);
             from != Some(AccountId::from([0x0; 32]))
                 && (from == owner
-                    || from == self.token_approvals.get(&id).cloned()
-                    || self.approved_for_all(
+                    || from == self.asset_proxy.get(&id).cloned()
+                    || self.check_proxy_for_all(
                         owner.expect("Error with AccountId"),
                         from.expect("Error with AccountId"),
                     ))
         }
 
-        /// Returns true if token `id` exists or false if it does not.
-        fn exists(&self, id: TokenId) -> bool {
-            self.token_owner.get(&id).is_some() && self.token_owner.contains_key(&id)
+        /// Returns true if asset `id` exists or false if it does not.
+        fn exists(&self, id: AssetId) -> bool {
+            self.asset_owner.get(&id).is_some() && self.asset_owner.contains_key(&id)
         }
     }
 
@@ -430,7 +916,7 @@ mod erc721 {
         Ok(())
     }
 
-    /// Increase token counter from the `of` AccountId.
+    /// Increase asset counter from the `of` AccountId.
     fn increase_counter_of(entry: Entry<AccountId, u32>) {
         entry.and_modify(|v| *v += 1).or_insert(1);
     }
@@ -452,15 +938,15 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Token 1 does not exists.
-            assert_eq!(erc721.owner_of(1), None);
-            // Alice does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.alice), 0);
-            // Create token Id 1.
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
+            let mut asseterc721 = AssetErc721::new();
+            // Asset 1 does not exists.
+            assert_eq!(asseterc721.asset_get_owner(1), None);
+            // Alice does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 0);
+            // Create asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
         }
 
         #[ink::test]
@@ -469,18 +955,18 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1.
-            assert_eq!(erc721.mint(1), Ok(()));
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
             // The first Transfer event takes place
             assert_eq!(1, ink_env::test::recorded_events().count());
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Alice owns token Id 1.
-            assert_eq!(erc721.owner_of(1), Some(accounts.alice));
-            // Cannot create  token Id if it exists.
-            // Bob cannot own token Id 1.
-            assert_eq!(erc721.mint(1), Err(Error::TokenExists));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Alice owns asset Id 1.
+            assert_eq!(asseterc721.asset_get_owner(1), Some(accounts.alice));
+            // Cannot create  asset Id if it exists.
+            // Bob cannot own asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Err(Error::AssetExists));
         }
 
         #[ink::test]
@@ -489,21 +975,21 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1 for Alice
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Alice owns token 1
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Bob does not owns any token
-            assert_eq!(erc721.balance_of(accounts.bob), 0);
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1 for Alice
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Alice owns asset 1
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Bob does not owns any asset
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 0);
             // The first Transfer event takes place
             assert_eq!(1, ink_env::test::recorded_events().count());
-            // Alice transfers token 1 to Bob
-            assert_eq!(erc721.transfer(accounts.bob, 1), Ok(()));
+            // Alice transfers asset 1 to Bob
+            assert_eq!(asseterc721.asset_transfer(accounts.bob, 1), Ok(()));
             // The second Transfer event takes place
             assert_eq!(2, ink_env::test::recorded_events().count());
-            // Bob owns token 1
-            assert_eq!(erc721.balance_of(accounts.bob), 1);
+            // Bob owns asset 1
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 1);
         }
 
         #[ink::test]
@@ -512,23 +998,23 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Transfer token fails if it does not exists.
-            assert_eq!(erc721.transfer(accounts.bob, 2), Err(Error::TokenNotFound));
-            // Token Id 2 does not exists.
-            assert_eq!(erc721.owner_of(2), None);
-            // Create token Id 2.
-            assert_eq!(erc721.mint(2), Ok(()));
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Token Id 2 is owned by Alice.
-            assert_eq!(erc721.owner_of(2), Some(accounts.alice));
+            let mut asseterc721 = AssetErc721::new();
+            // Transfer asset fails if it does not exists.
+            assert_eq!(asseterc721.asset_transfer(accounts.bob, 2), Err(Error::AssetNotFound));
+            // Asset Id 2 does not exists.
+            assert_eq!(asseterc721.asset_get_owner(2), None);
+            // Create asset Id 2.
+            assert_eq!(asseterc721.asset_new(2), Ok(()));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Asset Id 2 is owned by Alice.
+            assert_eq!(asseterc721.asset_get_owner(2), Some(accounts.alice));
             // Get contract address
             let callee = ink_env::account_id::<ink_env::DefaultEnvironment>()
                 .unwrap_or([0x0; 32].into());
             // Create call
             let mut data =
-                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // balance_of
+                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // account_assets_number
             data.push_arg(&accounts.bob);
             // Push the new execution context to set Bob as caller
             ink_env::test::push_execution_context::<ink_env::DefaultEnvironment>(
@@ -538,8 +1024,8 @@ mod erc721 {
                 1000000,
                 data,
             );
-            // Bob cannot transfer not owned tokens.
-            assert_eq!(erc721.transfer(accounts.eve, 2), Err(Error::NotApproved));
+            // Bob cannot transfer not owned assets.
+            assert_eq!(asseterc721.asset_transfer(accounts.eve, 2), Err(Error::NotApproved));
         }
 
         #[ink::test]
@@ -548,19 +1034,19 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1.
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Token Id 1 is owned by Alice.
-            assert_eq!(erc721.owner_of(1), Some(accounts.alice));
-            // Approve token Id 1 transfer for Bob on behalf of Alice.
-            assert_eq!(erc721.approve(accounts.bob, 1), Ok(()));
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Asset Id 1 is owned by Alice.
+            assert_eq!(asseterc721.asset_get_owner(1), Some(accounts.alice));
+            // Approve asset Id 1 transfer for Bob on behalf of Alice.
+            assert_eq!(asseterc721.account_delegate_single_asset(accounts.bob, 1), Ok(()));
             // Get contract address.
             let callee = ink_env::account_id::<ink_env::DefaultEnvironment>()
                 .unwrap_or([0x0; 32].into());
             // Create call
             let mut data =
-                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // balance_of
+                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // account_assets_number
             data.push_arg(&accounts.bob);
             // Push the new execution context to set Bob as caller
             ink_env::test::push_execution_context::<ink_env::DefaultEnvironment>(
@@ -570,19 +1056,19 @@ mod erc721 {
                 1000000,
                 data,
             );
-            // Bob transfers token Id 1 from Alice to Eve.
+            // Bob transfers asset Id 1 from Alice to Eve.
             assert_eq!(
-                erc721.transfer_from(accounts.alice, accounts.eve, 1),
+                asseterc721.transfer_from(accounts.alice, accounts.eve, 1),
                 Ok(())
             );
-            // TokenId 3 is owned by Eve.
-            assert_eq!(erc721.owner_of(1), Some(accounts.eve));
-            // Alice does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.alice), 0);
-            // Bob does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.bob), 0);
-            // Eve owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.eve), 1);
+            // AssetId 3 is owned by Eve.
+            assert_eq!(asseterc721.asset_get_owner(1), Some(accounts.eve));
+            // Alice does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 0);
+            // Bob does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 0);
+            // Eve owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.eve), 1);
         }
 
         #[ink::test]
@@ -591,18 +1077,18 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1.
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Create token Id 2.
-            assert_eq!(erc721.mint(2), Ok(()));
-            // Alice owns 2 tokens.
-            assert_eq!(erc721.balance_of(accounts.alice), 2);
-            // Approve token Id 1 transfer for Bob on behalf of Alice.
-            assert_eq!(erc721.set_approval_for_all(accounts.bob, true), Ok(()));
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Create asset Id 2.
+            assert_eq!(asseterc721.asset_new(2), Ok(()));
+            // Alice owns 2 assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 2);
+            // Approve asset Id 1 transfer for Bob on behalf of Alice.
+            assert_eq!(asseterc721.account_delegate_for_all_asset(accounts.bob, true), Ok(()));
             // Bob is an approved operator for Alice
             assert_eq!(
-                erc721.is_approved_for_all(accounts.alice, accounts.bob),
+                asseterc721.check_proxy_for_all(accounts.alice, accounts.bob),
                 true
             );
             // Get contract address.
@@ -610,7 +1096,7 @@ mod erc721 {
                 .unwrap_or([0x0; 32].into());
             // Create call
             let mut data =
-                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // balance_of
+                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // account_assets_number
             data.push_arg(&accounts.bob);
             // Push the new execution context to set Bob as caller
             ink_env::test::push_execution_context::<ink_env::DefaultEnvironment>(
@@ -620,31 +1106,31 @@ mod erc721 {
                 1000000,
                 data,
             );
-            // Bob transfers token Id 1 from Alice to Eve.
+            // Bob transfers asset Id 1 from Alice to Eve.
             assert_eq!(
-                erc721.transfer_from(accounts.alice, accounts.eve, 1),
+                asseterc721.transfer_from(accounts.alice, accounts.eve, 1),
                 Ok(())
             );
-            // TokenId 1 is owned by Eve.
-            assert_eq!(erc721.owner_of(1), Some(accounts.eve));
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Bob transfers token Id 2 from Alice to Eve.
+            // AssetId 1 is owned by Eve.
+            assert_eq!(asseterc721.asset_get_owner(1), Some(accounts.eve));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Bob transfers asset Id 2 from Alice to Eve.
             assert_eq!(
-                erc721.transfer_from(accounts.alice, accounts.eve, 2),
+                asseterc721.transfer_from(accounts.alice, accounts.eve, 2),
                 Ok(())
             );
-            // Bob does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.bob), 0);
-            // Eve owns 2 tokens.
-            assert_eq!(erc721.balance_of(accounts.eve), 2);
+            // Bob does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 0);
+            // Eve owns 2 assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.eve), 2);
             // Get back to the parent execution context.
             ink_env::test::pop_execution_context();
             // Remove operator approval for Bob on behalf of Alice.
-            assert_eq!(erc721.set_approval_for_all(accounts.bob, false), Ok(()));
+            assert_eq!(asseterc721.account_delegate_for_all_asset(accounts.bob, false), Ok(()));
             // Bob is not an approved operator for Alice.
             assert_eq!(
-                erc721.is_approved_for_all(accounts.alice, accounts.bob),
+                asseterc721.check_proxy_for_all(accounts.alice, accounts.bob),
                 false
             );
         }
@@ -655,21 +1141,21 @@ mod erc721 {
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1.
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Bob does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.bob), 0);
-            // Eve does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.eve), 0);
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1.
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Bob does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 0);
+            // Eve does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.eve), 0);
             // Get contract address.
             let callee = ink_env::account_id::<ink_env::DefaultEnvironment>()
                 .unwrap_or([0x0; 32].into());
             // Create call
             let mut data =
-                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // balance_of
+                ink_env::test::CallData::new(ink_env::call::Selector::new([0x00; 4])); // account_assets_number
             data.push_arg(&accounts.bob);
             // Push the new execution context to set Eve as caller
             ink_env::test::push_execution_context::<ink_env::DefaultEnvironment>(
@@ -681,58 +1167,58 @@ mod erc721 {
             );
             // Eve is not an approved operator by Alice.
             assert_eq!(
-                erc721.transfer_from(accounts.alice, accounts.frank, 1),
+                asseterc721.transfer_from(accounts.alice, accounts.frank, 1),
                 Err(Error::NotApproved)
             );
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Bob does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.bob), 0);
-            // Eve does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.eve), 0);
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Bob does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.bob), 0);
+            // Eve does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.eve), 0);
         }
 
         #[ink::test]
-        fn burn_works() {
+        fn asset_delete_works() {
             let accounts =
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1 for Alice
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Alice owns 1 token.
-            assert_eq!(erc721.balance_of(accounts.alice), 1);
-            // Alice owns token Id 1.
-            assert_eq!(erc721.owner_of(1), Some(accounts.alice));
-            // Destroy token Id 1.
-            assert_eq!(erc721.burn(1), Ok(()));
-            // Alice does not owns tokens.
-            assert_eq!(erc721.balance_of(accounts.alice), 0);
-            // Token Id 1 does not exists
-            assert_eq!(erc721.owner_of(1), None);
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1 for Alice
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Alice owns 1 asset.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 1);
+            // Alice owns asset Id 1.
+            assert_eq!(asseterc721.asset_get_owner(1), Some(accounts.alice));
+            // Destroy asset Id 1.
+            assert_eq!(asseterc721.asset_delete(1), Ok(()));
+            // Alice does not owns assets.
+            assert_eq!(asseterc721.account_assets_number(accounts.alice), 0);
+            // Asset Id 1 does not exists
+            assert_eq!(asseterc721.asset_get_owner(1), None);
         }
 
         #[ink::test]
-        fn burn_fails_token_not_found() {
+        fn asset_delete_fails_asset_not_found() {
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Try burning a non existent token
-            assert_eq!(erc721.burn(1), Err(Error::TokenNotFound));
+            let mut asseterc721 = AssetErc721::new();
+            // Try asset_deleteing a non existent asset
+            assert_eq!(asseterc721.asset_delete(1), Err(Error::AssetNotFound));
         }
 
         #[ink::test]
-        fn burn_fails_not_owner() {
+        fn asset_delete_fails_not_owner() {
             let accounts =
                 ink_env::test::default_accounts::<ink_env::DefaultEnvironment>()
                     .expect("Cannot get accounts");
             // Create a new contract instance.
-            let mut erc721 = Erc721::new();
-            // Create token Id 1 for Alice
-            assert_eq!(erc721.mint(1), Ok(()));
-            // Try burning this token with a different account
+            let mut asseterc721 = AssetErc721::new();
+            // Create asset Id 1 for Alice
+            assert_eq!(asseterc721.asset_new(1), Ok(()));
+            // Try asset_deleteing this asset with a different account
             set_sender(accounts.eve);
-            assert_eq!(erc721.burn(1), Err(Error::NotOwner));
+            assert_eq!(asseterc721.asset_delete(1), Err(Error::NotOwner));
         }
 
         fn set_sender(sender: AccountId) {
