@@ -1,5 +1,5 @@
 [package]
-name = "wivSupplyChain"
+name = "wivsupplychain"
 version = "3.0.0-rc2"
 authors = ["Wiv Technology <admin@wiv.io>"]
 edition = "2018"

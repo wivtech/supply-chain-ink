@@ -211,7 +211,7 @@ cargo +nightly contract build
 
 Inside the folder "target" your will find the smart contract package:
 
-wivSupplyChain.contract
+wivsupplychain.contract
 
 ### How to Run
 
@@ -230,7 +230,7 @@ it works well using Google Chrome, instead we have found issues using Safari/Mac
 
 To be noticed, that the well know and official link:  https://github.com/paritytech/canvas-node  does not work when reading data from the smart contract/blockchain.
 
-Click on "Developer", "Contracts" and "Upload Wasm" select wivSupplyChain.contract.
+Click on "Developer", "Contracts" and "Upload Wasm" select wivsupplychain.contract.
 Deploy the contract and you will have access to all the functions available.
 
 ### Super-Administrator Account
