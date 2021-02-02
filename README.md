@@ -7,7 +7,7 @@ This Smart Contract allows users to securely collect and store information about
 The control flow is the following:
 
 - Each asset is identified by a unique id;
-- Anyone can add a a new asset;
+- Anyone can add a a new asset that is subject to approval;
 - The owner of an asset can transfer it to other account;
 - The owner of an asset can delete it permanently;
 - Administrator account validate the assets added from any other user;
@@ -21,19 +21,28 @@ The control flow is the following:
 - Metadata should be an [IPFS address](https://www.ipfs.io)
 - Photos can be added as [IPFS address](https://www.ipfs.io)
 - The proxy control flow is not yet managed for now.
+- The assets not approved shall be considered as a draft/proposal.
+- Asset data changed after the last approval shall be considered as proposal and not verified.
 
-This smart contract offers 42 functions (extrisincs and reading calls) that have been grouped to keep it simple. The terminology refers to the real world, so the classic "mint()" for adding a new asset has been renamed to assetNew() and so on.
+This smart contract offers 42 functions (extrisincs and reading calls) that have been grouped to keep it simple. The terminology refers to the real world, for example the classic call to "mint()" for adding a new token/asset has been renamed to assetNew(). 
+
+Here the list of function (extrisincs and reading calls):
 
 ## Assets
 - assetNew (id: AssetId): Result<(), Error>
-  Creates a new asset.
+
+Creates a new asset.
 - assetDelete (id: AssetId): Result<(), Error>
+
   Deletes an existing asset. Only the owner can do it
 - assetTransfer (destination: AccountId, id: AssetId): Result<(), Error>
+
   Transfers the asset from the caller to a different account.
 - assetGetOwner (id: AssetId): Option<AccountId>
+
   Returns the owner of an asset id
 - assetVerify (id: AssetId): bool
+
   Verifies if an asset id is present in the storage, it returns true/false
 
 
