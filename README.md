@@ -205,7 +205,7 @@ For additional info to install the Smart Contract Plugin, check the [official do
 To build the smart contract
 
 ```bash
-cd wiv-supply-chain-ink
+cd supply-chain-ink
 cargo +nightly contract build
 ```
 
@@ -258,6 +258,16 @@ The possible role are:
 Every role can add asset and manage its own assets.
 
 "Administrator" is the only one that can validate the assets, changes roles of other accounts and manage assets categories. Administrator can also change any asset dta and transfer the assets without owning the assets.
+
+
+### Testing Unit
+
+There is a testing unit in the contract. It can be launched by:
+
+```bash
+cd supply-chain-ink
+cargo +nightly test
+```
 
 
 
